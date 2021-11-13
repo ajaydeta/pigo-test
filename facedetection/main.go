@@ -8,9 +8,11 @@ import (
 	"io/ioutil"
 	"log"
 	"math"
+	"os"
 )
 
 var dc *gg.Context
+var wd string
 
 func main() {
 	cascadeFile, err := ioutil.ReadFile("cascade/facefinder")
@@ -19,7 +21,9 @@ func main() {
 		return
 	}
 
-	src, err := pigo.GetImage("/image/tes.png")
+	wd, _ = os.Getwd()
+
+	src, err := pigo.GetImage("facedetection/image/tes.png")
 	if err != nil {
 		log.Fatalf("Cannot open the image file: %v", err)
 	}
@@ -32,7 +36,7 @@ func main() {
 
 	cParams := pigo.CascadeParams{
 		MinSize:     20,
-		MaxSize:     1000,
+		MaxSize:     1100,
 		ShiftFactor: 0.1,
 		ScaleFactor: 1.1,
 
@@ -61,7 +65,7 @@ func main() {
 	// Calculate the intersection over union (IoU) of two clusters.
 	dets = classifier.ClusterDetections(dets, 0.2)
 	log.Println(dets)
-	err = drawMarker(dets, true)
+	err = drawMarker(dets, false)
 	if err != nil {
 		log.Println(err)
 		return
@@ -90,12 +94,12 @@ func drawMarker(detections []pigo.Detection, isCircle bool) error {
 					float64(detections[i].Scale),
 				)
 			}
-			dc.SetLineWidth(8.0)
+			dc.SetLineWidth(1.0)
 			dc.SetStrokeStyle(gg.NewSolidPattern(color.RGBA{R: 255, G: 0, B: 0, A: 255}))
-			dc.Fill()
+			dc.Stroke()
 		}
 	}
-	err := dc.SavePNG("/image/jos.png")
+	err := dc.SavePNG("facedetection/image/jos.png")
 	if err != nil {
 		return err
 	}
