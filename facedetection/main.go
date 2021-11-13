@@ -64,7 +64,6 @@ func main() {
 
 	// Calculate the intersection over union (IoU) of two clusters.
 	dets = classifier.ClusterDetections(dets, 0.2)
-	log.Println(dets)
 	err = drawMarker(dets, false)
 	if err != nil {
 		log.Println(err)
@@ -74,7 +73,7 @@ func main() {
 }
 
 func drawMarker(detections []pigo.Detection, isCircle bool) error {
-	var qThresh float32 = 5.0
+	var qThresh float32 = 7.5
 
 	for i := 0; i < len(detections); i++ {
 		if detections[i].Q > qThresh {
@@ -94,7 +93,7 @@ func drawMarker(detections []pigo.Detection, isCircle bool) error {
 					float64(detections[i].Scale),
 				)
 			}
-			dc.SetLineWidth(1.0)
+			dc.SetLineWidth(20.0)
 			dc.SetStrokeStyle(gg.NewSolidPattern(color.RGBA{R: 255, G: 0, B: 0, A: 255}))
 			dc.Stroke()
 		}

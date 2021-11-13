@@ -33,7 +33,65 @@ func main() {
 	dc.DrawImage(src, 0, 0)
 
 	results := faceDetect(pixels, rows, cols)
+	dest := detsSetup(results)
 
+}
+
+func faceDetect(pixels []uint8, rows, cols int) []pigo.Detection {
+	imgParams = pigo.ImageParams{
+		Pixels: pixels,
+		Rows:   rows,
+		Cols:   cols,
+		Dim:    cols,
+	}
+
+	cParams = pigo.CascadeParams{
+		MinSize:     60,
+		MaxSize:     600,
+		ShiftFactor: 0.1,
+		ScaleFactor: 1.1,
+		ImageParams: imgParams,
+	}
+
+	faceCascade, err := ioutil.ReadFile("cascade/facefinder")
+	if err != nil {
+		log.Fatalln("load face cascade", err.Error())
+		return nil
+	}
+
+	//unpack face cascade file
+	p := pigo.NewPigo()
+	faceClassifier, err = p.Unpack(faceCascade)
+	if err != nil {
+		log.Fatalln("unpack cascade face file", err.Error())
+		return nil
+	}
+
+	puplocCascade, err := ioutil.ReadFile("cascade/puploc")
+	if err != nil {
+		log.Fatalf("Error reading the puploc cascade file: %s", err)
+		return nil
+	}
+
+	puplocClassifier, err = puplocClassifier.UnpackCascade(puplocCascade)
+	if err != nil {
+		log.Fatalf("Error unpacking the puploc cascade file: %s", err)
+		return nil
+	}
+
+	flpcs, err = puplocClassifier.ReadCascadeDir("../.cascade/lps")
+	if err != nil {
+		log.Fatalf("Error unpacking the facial landmark detection cascades: %s", err)
+	}
+
+	dets := faceClassifier.RunCascade(cParams, 0.0)
+
+	// Calculate the intersection over union (IoU) of two clusters.
+	dets = faceClassifier.ClusterDetections(dets, 0.0)
+	return dets
+}
+
+func detsSetup(results []pigo.Detection) [][]int {
 	dets := make([][]int, len(results))
 
 	for i := 0; i < len(results); i++ {
@@ -91,59 +149,5 @@ func main() {
 			dets[i] = append(dets[i], flp.Row, flp.Col, int(flp.Scale), int(results[i].Q), 2)
 		}
 	}
-
-}
-
-func faceDetect(pixels []uint8, rows, cols int) []pigo.Detection {
-	imgParams = pigo.ImageParams{
-		Pixels: pixels,
-		Rows:   rows,
-		Cols:   cols,
-		Dim:    cols,
-	}
-
-	cParams = pigo.CascadeParams{
-		MinSize:     60,
-		MaxSize:     600,
-		ShiftFactor: 0.1,
-		ScaleFactor: 1.1,
-		ImageParams: imgParams,
-	}
-
-	faceCascade, err := ioutil.ReadFile("cascade/facefinder")
-	if err != nil {
-		log.Fatalln("load face cascade", err.Error())
-		return nil
-	}
-
-	//unpack face cascade file
-	p := pigo.NewPigo()
-	faceClassifier, err = p.Unpack(faceCascade)
-	if err != nil {
-		log.Fatalln("unpack cascade face file", err.Error())
-		return nil
-	}
-
-	puplocCascade, err := ioutil.ReadFile("cascade/puploc")
-	if err != nil {
-		log.Fatalf("Error reading the puploc cascade file: %s", err)
-		return nil
-	}
-
-	puplocClassifier, err = puplocClassifier.UnpackCascade(puplocCascade)
-	if err != nil {
-		log.Fatalf("Error unpacking the puploc cascade file: %s", err)
-		return nil
-	}
-
-	flpcs, err = puplocClassifier.ReadCascadeDir("../.cascade/lps")
-	if err != nil {
-		log.Fatalf("Error unpacking the facial landmark detection cascades: %s", err)
-	}
-
-	dets := faceClassifier.RunCascade(cParams, 0.0)
-
-	// Calculate the intersection over union (IoU) of two clusters.
-	dets = faceClassifier.ClusterDetections(dets, 0.0)
 	return dets
 }
