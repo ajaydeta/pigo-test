@@ -93,7 +93,7 @@ func drawMarker(detections []pigo.Detection, isCircle bool) error {
 					float64(detections[i].Scale),
 				)
 			}
-			dc.SetLineWidth(20.0)
+			dc.SetLineWidth(1.0)
 			dc.SetStrokeStyle(gg.NewSolidPattern(color.RGBA{R: 255, G: 0, B: 0, A: 255}))
 			dc.Stroke()
 		}

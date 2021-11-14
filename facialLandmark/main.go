@@ -1,10 +1,13 @@
 package main
 
 import (
+	"fmt"
 	pigo "github.com/esimov/pigo/core"
 	"github.com/fogleman/gg"
+	"image/color"
 	"io/ioutil"
 	"log"
+	"math"
 )
 
 var (
@@ -13,6 +16,7 @@ var (
 	flpcs            map[string][]*pigo.FlpCascade
 	cParams          pigo.CascadeParams
 	imgParams        pigo.ImageParams
+	dc               *gg.Context
 )
 
 var (
@@ -21,7 +25,7 @@ var (
 )
 
 func main() {
-	src, err := pigo.GetImage("/image/tes.png")
+	src, err := pigo.GetImage("facialLandmark/image/tes.png")
 	if err != nil {
 		log.Fatalf("Cannot open the image file: %v", err)
 	}
@@ -29,11 +33,14 @@ func main() {
 	pixels := pigo.RgbToGrayscale(src)
 	cols, rows := src.Bounds().Max.X, src.Bounds().Max.Y
 
-	dc := gg.NewContext(cols, rows)
+	dc = gg.NewContext(cols, rows)
 	dc.DrawImage(src, 0, 0)
 
 	results := faceDetect(pixels, rows, cols)
-	dest := detsSetup(results)
+	err = detsSetup(results)
+	if err != nil {
+		log.Fatalf("setuop: %v", err)
+	}
 
 }
 
@@ -46,8 +53,8 @@ func faceDetect(pixels []uint8, rows, cols int) []pigo.Detection {
 	}
 
 	cParams = pigo.CascadeParams{
-		MinSize:     60,
-		MaxSize:     600,
+		MinSize:     20,
+		MaxSize:     1100,
 		ShiftFactor: 0.1,
 		ScaleFactor: 1.1,
 		ImageParams: imgParams,
@@ -79,7 +86,7 @@ func faceDetect(pixels []uint8, rows, cols int) []pigo.Detection {
 		return nil
 	}
 
-	flpcs, err = puplocClassifier.ReadCascadeDir("../.cascade/lps")
+	flpcs, err = puplocClassifier.ReadCascadeDir("cascade/lps")
 	if err != nil {
 		log.Fatalf("Error unpacking the facial landmark detection cascades: %s", err)
 	}
@@ -87,67 +94,136 @@ func faceDetect(pixels []uint8, rows, cols int) []pigo.Detection {
 	dets := faceClassifier.RunCascade(cParams, 0.0)
 
 	// Calculate the intersection over union (IoU) of two clusters.
-	dets = faceClassifier.ClusterDetections(dets, 0.0)
+	dets = faceClassifier.ClusterDetections(dets, 0.2)
 	return dets
 }
 
-func detsSetup(results []pigo.Detection) [][]int {
-	dets := make([][]int, len(results))
+func detsSetup(results []pigo.Detection) error {
+	var qThresh float32 = 7.5
 
+	fmt.Println(results)
 	for i := 0; i < len(results); i++ {
-		dets[i] = append(dets[i], results[i].Row, results[i].Col, results[i].Scale, int(results[i].Q), 0)
-		// left eye
-		puploc := &pigo.Puploc{
-			Row:      results[i].Row - int(0.085*float32(results[i].Scale)),
-			Col:      results[i].Col - int(0.185*float32(results[i].Scale)),
-			Scale:    float32(results[i].Scale) * 0.4,
-			Perturbs: 63,
-		}
-		leftEye := puplocClassifier.RunDetector(*puploc, imgParams, 0.0, false)
-		if leftEye.Row > 0 && leftEye.Col > 0 {
-			dets[i] = append(dets[i], leftEye.Row, leftEye.Col, int(leftEye.Scale), int(results[i].Q), 1)
-		}
+		result := results[i]
+		if result.Q > qThresh {
+			dc.DrawArc(
+				float64(result.Col),
+				float64(result.Row),
+				float64(result.Scale/2),
+				0,
+				2*math.Pi,
+			)
+			dc.SetLineWidth(1.0)
+			dc.SetStrokeStyle(gg.NewSolidPattern(color.RGBA{R: 255, G: 0, B: 0, A: 255}))
+			dc.Stroke()
 
-		// right eye
-		puploc = &pigo.Puploc{
-			Row:      results[i].Row - int(0.085*float32(results[i].Scale)),
-			Col:      results[i].Col + int(0.185*float32(results[i].Scale)),
-			Scale:    float32(results[i].Scale) * 0.4,
-			Perturbs: 63,
-		}
+			// left eye
+			puploc := &pigo.Puploc{
+				Row:      result.Row - int(0.085*float32(result.Scale)),
+				Col:      result.Col - int(0.185*float32(result.Scale)),
+				Scale:    float32(result.Scale) * 0.4,
+				Perturbs: 63,
+			}
+			leftEye := puplocClassifier.RunDetector(*puploc, imgParams, 0.0, false)
+			if leftEye.Row > 0 && leftEye.Col > 0 {
+				dc.DrawRectangle(
+					float64(float32(leftEye.Col)-leftEye.Scale/2),
+					float64(float32(leftEye.Row)-leftEye.Scale/2),
+					float64(leftEye.Scale),
+					float64(leftEye.Scale),
+				)
+				dc.SetLineWidth(1.0)
+				dc.SetStrokeStyle(gg.NewSolidPattern(color.RGBA{R: 0, G: 255, B: 0, A: 255}))
+				dc.Stroke()
+			}
 
-		rightEye := puplocClassifier.RunDetector(*puploc, imgParams, 0.0, false)
-		if rightEye.Row > 0 && rightEye.Col > 0 {
-			dets[i] = append(dets[i], rightEye.Row, rightEye.Col, int(rightEye.Scale), int(results[i].Q), 1)
-		}
+			// right eye
+			puploc = &pigo.Puploc{
+				Row:      results[i].Row - int(0.085*float32(results[i].Scale)),
+				Col:      results[i].Col + int(0.185*float32(results[i].Scale)),
+				Scale:    float32(results[i].Scale) * 0.4,
+				Perturbs: 63,
+			}
 
-		for _, eye := range eyeCascades {
-			for _, flpc := range flpcs[eye] {
-				flp := flpc.GetLandmarkPoint(leftEye, rightEye, imgParams, puploc.Perturbs, false)
-				if flp.Row > 0 && flp.Col > 0 {
-					dets[i] = append(dets[i], flp.Row, flp.Col, int(flp.Scale), int(results[i].Q), 2)
-				}
+			rightEye := puplocClassifier.RunDetector(*puploc, imgParams, 0.0, false)
+			if rightEye.Row > 0 && rightEye.Col > 0 {
+				dc.DrawRectangle(
+					float64(float32(rightEye.Col)-rightEye.Scale/2),
+					float64(float32(rightEye.Row)-rightEye.Scale/2),
+					float64(rightEye.Scale),
+					float64(rightEye.Scale),
+				)
+				dc.SetLineWidth(1.0)
+				dc.SetStrokeStyle(gg.NewSolidPattern(color.RGBA{R: 0, G: 255, B: 0, A: 255}))
+				dc.Stroke()
+			}
 
-				flp = flpc.GetLandmarkPoint(leftEye, rightEye, imgParams, puploc.Perturbs, true)
-				if flp.Row > 0 && flp.Col > 0 {
-					dets[i] = append(dets[i], flp.Row, flp.Col, int(flp.Scale), int(results[i].Q), 2)
+			for _, eye := range eyeCascades {
+				for _, flpc := range flpcs[eye] {
+					flp := flpc.GetLandmarkPoint(leftEye, rightEye, imgParams, puploc.Perturbs, false)
+					if flp.Row > 0 && flp.Col > 0 {
+						dc.DrawArc(
+							float64(flp.Col),
+							float64(flp.Row),
+							float64(flp.Scale/2),
+							0,
+							2*math.Pi,
+						)
+						dc.SetLineWidth(1.0)
+						dc.SetStrokeStyle(gg.NewSolidPattern(color.RGBA{R: 0, G: 0, B: 255, A: 255}))
+						dc.Stroke()
+					}
+
+					flp = flpc.GetLandmarkPoint(leftEye, rightEye, imgParams, puploc.Perturbs, true)
+					if flp.Row > 0 && flp.Col > 0 {
+						dc.DrawArc(
+							float64(flp.Col),
+							float64(flp.Row),
+							float64(flp.Scale/2),
+							0,
+							2*math.Pi,
+						)
+						dc.SetLineWidth(1.0)
+						dc.SetStrokeStyle(gg.NewSolidPattern(color.RGBA{R: 0, G: 0, B: 255, A: 255}))
+						dc.Stroke()
+					}
 				}
 			}
-		}
 
-		// Traverse all the mouth cascades and run the detector on each of them.
-		for _, mouth := range mouthCascade {
-			for _, flpc := range flpcs[mouth] {
-				flp := flpc.GetLandmarkPoint(leftEye, rightEye, imgParams, puploc.Perturbs, false)
-				if flp.Row > 0 && flp.Col > 0 {
-					dets[i] = append(dets[i], flp.Row, flp.Col, int(flp.Scale), int(results[i].Q), 2)
+			for _, mouth := range mouthCascade {
+				for _, flpc := range flpcs[mouth] {
+					flp := flpc.GetLandmarkPoint(leftEye, rightEye, imgParams, puploc.Perturbs, false)
+					if flp.Row > 0 && flp.Col > 0 {
+						dc.DrawArc(
+							float64(flp.Col),
+							float64(flp.Row),
+							float64(flp.Scale/2),
+							0,
+							2*math.Pi,
+						)
+						dc.SetLineWidth(1.0)
+						dc.SetStrokeStyle(gg.NewSolidPattern(color.RGBA{R: 0, G: 0, B: 255, A: 255}))
+						dc.Stroke()
+					}
 				}
 			}
-		}
-		flp := flpcs["lp84"][0].GetLandmarkPoint(leftEye, rightEye, imgParams, puploc.Perturbs, true)
-		if flp.Row > 0 && flp.Col > 0 {
-			dets[i] = append(dets[i], flp.Row, flp.Col, int(flp.Scale), int(results[i].Q), 2)
+			flp := flpcs["lp84"][0].GetLandmarkPoint(leftEye, rightEye, imgParams, puploc.Perturbs, true)
+			if flp.Row > 0 && flp.Col > 0 {
+				dc.DrawArc(
+					float64(flp.Col),
+					float64(flp.Row),
+					float64(flp.Scale/2),
+					0,
+					2*math.Pi,
+				)
+				dc.SetLineWidth(1.0)
+				dc.SetStrokeStyle(gg.NewSolidPattern(color.RGBA{R: 0, G: 0, B: 255, A: 255}))
+				dc.Stroke()
+			}
 		}
 	}
-	return dets
+	err := dc.SavePNG("facialLandmark/image/jos.png")
+	if err != nil {
+		return err
+	}
+	return nil
 }
